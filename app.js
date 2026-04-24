@@ -1,7 +1,7 @@
 /* ========================================
-   DayFlow — Application Logic
-   Syncs with server API, uses localStorage
-   as a fast cache / offline fallback.
+   DayFlow v1 — Redesigned Application Logic
+   Pop animations, particles, toasts, and
+   server sync with localStorage cache.
    ======================================== */
 
 (function () {
@@ -17,7 +17,7 @@
     // State
     // -------------------------------------------------------
     let currentDate = todayStr();
-    let filterMode = 'all'; // all | active | completed
+    let filterMode = 'all';
     let debounceTimers = {};
 
     // -------------------------------------------------------
@@ -30,8 +30,7 @@
 
     function formatDateDisplay(dateStr) {
         const d = new Date(dateStr + 'T00:00:00');
-        const options = { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' };
-        return d.toLocaleDateString('en-US', options);
+        return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
     }
 
     function shiftDate(dateStr, delta) {
@@ -43,28 +42,156 @@
     function formatTime12(h) {
         const suffix = h >= 12 ? 'PM' : 'AM';
         const hr = h % 12 || 12;
-        return { hour: String(hr).padStart(2, ' '), period: suffix };
+        return { hour: String(hr), period: suffix };
     }
 
     function nowTimeStr() {
-        const d = new Date();
-        return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+        return new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
     }
 
     function uid() {
         return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
     }
 
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
     // -------------------------------------------------------
-    // Local Storage (cache layer)
+    // Particle Background
+    // -------------------------------------------------------
+    (function initParticles() {
+        const canvas = document.getElementById('particle-canvas');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        let particles = [];
+        const PARTICLE_COUNT = 50;
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+            particles.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                vx: (Math.random() - 0.5) * 0.3,
+                vy: (Math.random() - 0.5) * 0.3,
+                r: Math.random() * 1.5 + 0.5,
+                alpha: Math.random() * 0.3 + 0.05,
+            });
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            particles.forEach(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                if (p.x < 0) p.x = canvas.width;
+                if (p.x > canvas.width) p.x = 0;
+                if (p.y < 0) p.y = canvas.height;
+                if (p.y > canvas.height) p.y = 0;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(192, 132, 252, ${p.alpha})`;
+                ctx.fill();
+            });
+
+            // Draw subtle connecting lines
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < 120) {
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.strokeStyle = `rgba(192, 132, 252, ${0.03 * (1 - dist / 120)})`;
+                        ctx.lineWidth = 0.5;
+                        ctx.stroke();
+                    }
+                }
+            }
+            requestAnimationFrame(draw);
+        }
+        draw();
+    })();
+
+    // -------------------------------------------------------
+    // Pop Particles Effect
+    // -------------------------------------------------------
+    function spawnPopParticles(x, y, colors, count = 12) {
+        const container = document.getElementById('pop-particles');
+        for (let i = 0; i < count; i++) {
+            const el = document.createElement('div');
+            el.className = 'pop-particle';
+            const angle = (Math.PI * 2 * i) / count + (Math.random() * 0.5);
+            const dist = 40 + Math.random() * 60;
+            const tx = Math.cos(angle) * dist;
+            const ty = Math.sin(angle) * dist;
+            const size = 4 + Math.random() * 6;
+            const color = colors[Math.floor(Math.random() * colors.length)];
+
+            el.style.cssText = `
+                left: ${x}px; top: ${y}px;
+                width: ${size}px; height: ${size}px;
+                background: ${color};
+                --tx: ${tx}px; --ty: ${ty}px;
+                animation-delay: ${Math.random() * 80}ms;
+                animation-duration: ${500 + Math.random() * 300}ms;
+            `;
+            container.appendChild(el);
+            setTimeout(() => el.remove(), 1000);
+        }
+
+        // Add a few star shapes
+        for (let i = 0; i < 4; i++) {
+            const star = document.createElement('div');
+            star.className = 'pop-star';
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 50 + Math.random() * 50;
+            const tx = Math.cos(angle) * dist;
+            const ty = Math.sin(angle) * dist;
+            const color = colors[Math.floor(Math.random() * colors.length)];
+
+            star.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="${color}"><polygon points="12 2 15 9 22 9 16 14 18 22 12 17 6 22 8 14 2 9 9 9"/></svg>`;
+            star.style.cssText = `
+                left: ${x}px; top: ${y}px;
+                --tx: ${tx}px; --ty: ${ty}px;
+            `;
+            container.appendChild(star);
+            setTimeout(() => star.remove(), 1000);
+        }
+    }
+
+    // -------------------------------------------------------
+    // Toast Notifications
+    // -------------------------------------------------------
+    function showToast(icon, message, duration = 2500) {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        toast.className = 'toast';
+        toast.innerHTML = `<span class="toast-icon">${icon}</span><span>${message}</span>`;
+        container.appendChild(toast);
+
+        setTimeout(() => {
+            toast.classList.add('removing');
+            setTimeout(() => toast.remove(), 350);
+        }, duration);
+    }
+
+    // -------------------------------------------------------
+    // Local Storage (cache)
     // -------------------------------------------------------
     function loadCacheAll() {
-        try {
-            const raw = localStorage.getItem(STORAGE_KEY);
-            return raw ? JSON.parse(raw) : {};
-        } catch {
-            return {};
-        }
+        try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); }
+        catch { return {}; }
     }
 
     function saveCacheAll(data) {
@@ -90,7 +217,7 @@
             const res = await fetch(`${API_BASE}/day/${dateStr}`);
             if (!res.ok) throw new Error('Server error');
             const data = await res.json();
-            setCachedDay(dateStr, data); // update local cache
+            setCachedDay(dateStr, data);
             return data;
         } catch (err) {
             console.warn('API fetch failed, using cache:', err.message);
@@ -99,76 +226,50 @@
     }
 
     async function apiAddTask(dateStr, task) {
-        try {
-            await fetch(`${API_BASE}/day/${dateStr}/tasks`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(task),
-            });
-        } catch (err) {
-            console.warn('API addTask failed:', err.message);
-        }
+        try { await fetch(`${API_BASE}/day/${dateStr}/tasks`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(task) }); }
+        catch (err) { console.warn('API addTask failed:', err.message); }
     }
 
     async function apiToggleTask(dateStr, taskId, completed) {
-        try {
-            await fetch(`${API_BASE}/day/${dateStr}/tasks/${taskId}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ completed }),
-            });
-        } catch (err) {
-            console.warn('API toggleTask failed:', err.message);
-        }
+        try { await fetch(`${API_BASE}/day/${dateStr}/tasks/${taskId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed }) }); }
+        catch (err) { console.warn('API toggleTask failed:', err.message); }
     }
 
     async function apiDeleteTask(dateStr, taskId) {
-        try {
-            await fetch(`${API_BASE}/day/${dateStr}/tasks/${taskId}`, {
-                method: 'DELETE',
-            });
-        } catch (err) {
-            console.warn('API deleteTask failed:', err.message);
-        }
+        try { await fetch(`${API_BASE}/day/${dateStr}/tasks/${taskId}`, { method: 'DELETE' }); }
+        catch (err) { console.warn('API deleteTask failed:', err.message); }
     }
 
     async function apiSaveFeedback(dateStr, hour, text) {
-        try {
-            await fetch(`${API_BASE}/day/${dateStr}/feedback/${hour}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text }),
-            });
-        } catch (err) {
-            console.warn('API saveFeedback failed:', err.message);
-        }
+        try { await fetch(`${API_BASE}/day/${dateStr}/feedback/${hour}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) }); }
+        catch (err) { console.warn('API saveFeedback failed:', err.message); }
     }
 
     // -------------------------------------------------------
     // DOM References
     // -------------------------------------------------------
-    const $dateDisplay = document.getElementById('date-display');
-    const $prevDay = document.getElementById('prev-day');
-    const $nextDay = document.getElementById('next-day');
-    const $todayBtn = document.getElementById('today-btn');
-
-    const $statCompleted = document.getElementById('stat-completed');
-    const $statProgress = document.getElementById('stat-progress');
-    const $statFeedback = document.getElementById('stat-feedback');
-    const $progressRing = document.getElementById('progress-ring');
-
-    const $addForm = document.getElementById('add-task-form');
-    const $taskInput = document.getElementById('task-input');
-    const $prioritySelect = document.getElementById('priority-select');
-    const $taskList = document.getElementById('task-list');
-    const $tasksEmpty = document.getElementById('tasks-empty');
-    const $tasksCount = document.getElementById('tasks-count');
-    const $filterBtn = document.getElementById('filter-btn');
-    const $filterLabel = document.getElementById('filter-label');
-
-    const $feedbackTimeline = document.getElementById('feedback-timeline');
-    const $feedbackCount = document.getElementById('feedback-count');
-    const $currentTime = document.getElementById('current-time');
+    const $ = id => document.getElementById(id);
+    const $dateDisplay = $('date-display');
+    const $prevDay = $('prev-day');
+    const $nextDay = $('next-day');
+    const $todayBtn = $('today-btn');
+    const $statCompleted = $('stat-completed');
+    const $statProgress = $('stat-progress');
+    const $statFeedback = $('stat-feedback');
+    const $statStreak = $('stat-streak');
+    const $progressRing = $('progress-ring');
+    const $statBarFill = $('stat-bar-fill');
+    const $addForm = $('add-task-form');
+    const $taskInput = $('task-input');
+    const $prioritySelect = $('priority-select');
+    const $taskList = $('task-list');
+    const $tasksEmpty = $('tasks-empty');
+    const $tasksCount = $('tasks-count');
+    const $filterBtn = $('filter-btn');
+    const $filterLabel = $('filter-label');
+    const $feedbackTimeline = $('feedback-timeline');
+    const $feedbackCount = $('feedback-count');
+    const $currentTime = $('current-time');
 
     // -------------------------------------------------------
     // Render: Date
@@ -176,40 +277,75 @@
     function renderDate() {
         $dateDisplay.textContent = formatDateDisplay(currentDate);
         const isToday = currentDate === todayStr();
-        $todayBtn.style.opacity = isToday ? '0.4' : '1';
+        $todayBtn.style.opacity = isToday ? '0.35' : '1';
         $todayBtn.style.pointerEvents = isToday ? 'none' : 'auto';
     }
 
     // -------------------------------------------------------
-    // Render: Stats
+    // Render: Stats with animation
     // -------------------------------------------------------
+    let prevStats = { done: -1, pct: -1, fb: -1 };
+
     function renderStats() {
         const day = getCachedDay(currentDate);
         const total = day.tasks.length;
         const done = day.tasks.filter(t => t.completed).length;
         const pct = total ? Math.round((done / total) * 100) : 0;
-
-        $statCompleted.textContent = `${done}/${total}`;
-        $statProgress.textContent = `${pct}%`;
-
-        // Feedback count
         const fbCount = Object.values(day.feedback || {}).filter(v => v.trim().length > 0).length;
+
+        // Animated value bump
+        if (prevStats.done !== done) {
+            $statCompleted.textContent = `${done}/${total}`;
+            $statCompleted.classList.remove('bump');
+            void $statCompleted.offsetWidth;
+            $statCompleted.classList.add('bump');
+        } else {
+            $statCompleted.textContent = `${done}/${total}`;
+        }
+
+        if (prevStats.pct !== pct) {
+            $statProgress.textContent = `${pct}%`;
+            $statProgress.classList.remove('bump');
+            void $statProgress.offsetWidth;
+            $statProgress.classList.add('bump');
+        } else {
+            $statProgress.textContent = `${pct}%`;
+        }
+
         $statFeedback.textContent = fbCount;
 
-        // Progress ring: circumference ≈ 99.9
-        const circ = 99.9;
-        const offset = circ - (circ * pct / 100);
-        $progressRing.style.strokeDashoffset = offset;
+        // Progress ring (circumference = 2πr = 2 × π × 18 ≈ 113.1)
+        const circ = 113.1;
+        $progressRing.style.strokeDashoffset = circ - (circ * pct / 100);
+
+        // Stat bar fill
+        $statBarFill.style.width = `${pct}%`;
+
+        // Streak calculation
+        let streak = 0;
+        const allData = loadCacheAll();
+        let checkDate = todayStr();
+        while (true) {
+            const d = allData[checkDate];
+            if (d && d.tasks.length > 0 && d.tasks.some(t => t.completed)) {
+                streak++;
+                checkDate = shiftDate(checkDate, -1);
+            } else {
+                break;
+            }
+        }
+        $statStreak.textContent = streak > 0 ? `${streak}🔥` : '—';
+
+        prevStats = { done, pct, fb: fbCount };
     }
 
     // -------------------------------------------------------
     // Render: Tasks
     // -------------------------------------------------------
-    function renderTasks() {
+    function renderTasks(newTaskId = null) {
         const day = getCachedDay(currentDate);
         let tasks = day.tasks;
 
-        // filter
         if (filterMode === 'active') tasks = tasks.filter(t => !t.completed);
         else if (filterMode === 'completed') tasks = tasks.filter(t => t.completed);
 
@@ -221,15 +357,20 @@
             $tasksEmpty.classList.remove('visible');
         }
 
-        const totalAll = day.tasks.length;
-        $tasksCount.textContent = `${totalAll} task${totalAll !== 1 ? 's' : ''}`;
+        $tasksCount.textContent = `${day.tasks.length} task${day.tasks.length !== 1 ? 's' : ''}`;
 
         tasks.forEach((task, idx) => {
             const el = document.createElement('div');
-            el.className = `task-item${task.completed ? ' completed' : ''}`;
+            el.className = 'task-item';
+            if (task.completed) el.classList.add('completed');
+            if (task.id === newTaskId) el.classList.add('popping-in');
             el.dataset.priority = task.priority || 'medium';
             el.dataset.id = task.id;
-            el.style.animationDelay = `${idx * 40}ms`;
+
+            if (task.id !== newTaskId) {
+                el.style.animationDelay = `${idx * 30}ms`;
+                el.classList.add('popping-in');
+            }
 
             el.innerHTML = `
                 <label class="task-checkbox">
@@ -245,15 +386,32 @@
                 </button>
             `;
 
-            // checkbox
-            el.querySelector('input[type="checkbox"]').addEventListener('change', (e) => {
-                toggleTask(task.id, e.target.checked);
+            // Checkbox handler
+            const checkbox = el.querySelector('input[type="checkbox"]');
+            checkbox.addEventListener('change', (e) => {
+                const checked = e.target.checked;
+                toggleTask(task.id, checked);
+
+                if (checked) {
+                    // Celebration pop!
+                    const rect = el.getBoundingClientRect();
+                    const cx = rect.left + rect.width / 2;
+                    const cy = rect.top + rect.height / 2;
+                    spawnPopParticles(cx, cy, ['#34d399', '#6ee7b7', '#a7f3d0', '#fbbf24', '#c084fc'], 16);
+                    el.classList.add('celebrate');
+                    showToast('✅', 'Task completed!');
+                }
             });
 
-            // delete
+            // Delete handler
             el.querySelector('.task-delete').addEventListener('click', () => {
-                el.classList.add('removing');
-                setTimeout(() => deleteTask(task.id), 300);
+                const rect = el.getBoundingClientRect();
+                const cx = rect.left + rect.width / 2;
+                const cy = rect.top + rect.height / 2;
+                spawnPopParticles(cx, cy, ['#f43f5e', '#fb7185', '#fda4af', '#fecdd3'], 10);
+                el.classList.add('popping-out');
+                showToast('🗑️', 'Task removed');
+                setTimeout(() => deleteTask(task.id), 400);
             });
 
             $taskList.appendChild(el);
@@ -262,14 +420,8 @@
         renderStats();
     }
 
-    function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
     // -------------------------------------------------------
-    // Task Actions (cache-first, then sync to server)
+    // Task Actions
     // -------------------------------------------------------
     function addTask(text, priority) {
         const day = getCachedDay(currentDate);
@@ -285,8 +437,14 @@
         };
         day.tasks.push(task);
         setCachedDay(currentDate, day);
-        renderTasks();
-        // sync to server
+        renderTasks(task.id);
+
+        // Pop on the add button
+        const btn = $('add-task-btn');
+        const rect = btn.getBoundingClientRect();
+        spawnPopParticles(rect.left + rect.width / 2, rect.top + rect.height / 2, ['#c084fc', '#818cf8', '#f472b6', '#fbbf24'], 14);
+        showToast('✨', `"${text.length > 30 ? text.slice(0, 30) + '…' : text}" added!`);
+
         apiAddTask(currentDate, task);
     }
 
@@ -297,7 +455,6 @@
             task.completed = completed;
             setCachedDay(currentDate, day);
             renderTasks();
-            // sync to server
             apiToggleTask(currentDate, id, completed);
         }
     }
@@ -307,7 +464,6 @@
         day.tasks = day.tasks.filter(t => t.id !== id);
         setCachedDay(currentDate, day);
         renderTasks();
-        // sync to server
         apiDeleteTask(currentDate, id);
     }
 
@@ -323,13 +479,11 @@
 
         $feedbackTimeline.innerHTML = '';
 
-        // Show hours 5 AM to 11 PM (5–23)
         for (let h = 5; h <= 23; h++) {
             const key = String(h);
             const { hour, period } = formatTime12(h);
             const value = feedback[key] || '';
             const hasFeedback = value.trim().length > 0;
-
             const isPast = isToday && h < currentHour;
             const isCurrent = isToday && h === currentHour;
 
@@ -341,14 +495,14 @@
 
             slot.innerHTML = `
                 <div class="feedback-time-col">
-                    <span class="feedback-hour">${hour.trim()}</span>
+                    <span class="feedback-hour">${hour}</span>
                     <span class="feedback-period">${period}</span>
                     <span class="feedback-dot"></span>
                 </div>
                 <div class="feedback-input-col">
                     <textarea
                         class="feedback-textarea${hasFeedback ? ' has-content' : ''}"
-                        placeholder="${isCurrent ? 'How\'s this hour going?' : isPast ? 'What did you accomplish?' : 'Plan for this hour…'}"
+                        placeholder="${isCurrent ? "How's this hour going?" : isPast ? 'What did you accomplish?' : 'Plan for this hour…'}"
                         data-hour="${key}"
                         rows="1"
                     >${escapeHtml(value)}</textarea>
@@ -357,7 +511,6 @@
 
             const textarea = slot.querySelector('.feedback-textarea');
             textarea.addEventListener('input', (e) => {
-                // Update local cache immediately
                 const day = getCachedDay(currentDate);
                 if (!day.feedback) day.feedback = {};
                 day.feedback[key] = e.target.value;
@@ -373,7 +526,6 @@
                 autoResize(e.target);
                 renderStats();
 
-                // Debounced sync to server (300ms after user stops typing)
                 clearTimeout(debounceTimers[`fb-${key}`]);
                 debounceTimers[`fb-${key}`] = setTimeout(() => {
                     apiSaveFeedback(currentDate, key, e.target.value);
@@ -381,22 +533,16 @@
             });
 
             $feedbackTimeline.appendChild(slot);
-
-            // Auto-resize on load
             requestAnimationFrame(() => autoResize(textarea));
         }
 
-        // Scroll to current hour
         if (isToday) {
             const currentSlot = $feedbackTimeline.querySelector('.current-hour');
             if (currentSlot) {
-                setTimeout(() => {
-                    currentSlot.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }, 400);
+                setTimeout(() => currentSlot.scrollIntoView({ behavior: 'smooth', block: 'center' }), 500);
             }
         }
 
-        // Update feedback count badge
         const fbCount = Object.values(feedback).filter(v => v.trim().length > 0).length;
         $feedbackCount.textContent = `${fbCount} entr${fbCount !== 1 ? 'ies' : 'y'}`;
     }
@@ -416,35 +562,19 @@
     // -------------------------------------------------------
     // Event Listeners
     // -------------------------------------------------------
-
-    // Add task
     $addForm.addEventListener('submit', (e) => {
         e.preventDefault();
         const text = $taskInput.value.trim();
         if (!text) return;
-        const priority = $prioritySelect.value;
-        addTask(text, priority);
+        addTask(text, $prioritySelect.value);
         $taskInput.value = '';
         $taskInput.focus();
     });
 
-    // Date navigation
-    $prevDay.addEventListener('click', () => {
-        currentDate = shiftDate(currentDate, -1);
-        renderAll();
-    });
+    $prevDay.addEventListener('click', () => { currentDate = shiftDate(currentDate, -1); renderAll(); });
+    $nextDay.addEventListener('click', () => { currentDate = shiftDate(currentDate, 1); renderAll(); });
+    $todayBtn.addEventListener('click', () => { currentDate = todayStr(); renderAll(); });
 
-    $nextDay.addEventListener('click', () => {
-        currentDate = shiftDate(currentDate, 1);
-        renderAll();
-    });
-
-    $todayBtn.addEventListener('click', () => {
-        currentDate = todayStr();
-        renderAll();
-    });
-
-    // Filter
     const filterModes = ['all', 'active', 'completed'];
     $filterBtn.addEventListener('click', () => {
         const idx = (filterModes.indexOf(filterMode) + 1) % filterModes.length;
@@ -454,15 +584,13 @@
     });
 
     // -------------------------------------------------------
-    // Render All (fetch from server, then render)
+    // Render All
     // -------------------------------------------------------
     async function renderAll() {
         renderDate();
-        // Render immediately from cache
         renderTasks();
         renderFeedback();
         renderStats();
-        // Then fetch fresh data from server and re-render
         await apiFetchDay(currentDate);
         renderTasks();
         renderFeedback();
@@ -475,12 +603,6 @@
     renderAll();
     updateClock();
     setInterval(updateClock, 1000);
-
-    // Re-highlight current hour every minute
-    setInterval(() => {
-        if (currentDate === todayStr()) {
-            renderFeedback();
-        }
-    }, 60000);
+    setInterval(() => { if (currentDate === todayStr()) renderFeedback(); }, 60000);
 
 })();
