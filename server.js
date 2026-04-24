@@ -112,9 +112,13 @@ app.put('/api/day/:date/feedback/:hour', (req, res) => {
 });
 
 // -------------------------------------------------------
-// Start
+// Start (local dev) + export for Vercel serverless
 // -------------------------------------------------------
-app.listen(PORT, () => {
-    ensureDataDir();
-    console.log(`\n  ✨ DayFlow server running at http://localhost:${PORT}\n`);
-});
+if (require.main === module) {
+    app.listen(PORT, () => {
+        ensureDataDir();
+        console.log(`\n  ✨ DayFlow server running at http://localhost:${PORT}\n`);
+    });
+}
+
+module.exports = app;
